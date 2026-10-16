@@ -25,6 +25,7 @@ backend/database/*.sqlite
 frontend/coverage
 frontend/cypress/videos
 frontend/cypress/screenshots
+backend/.claude/
 
 # Editor directories and files
 .vscode/*
