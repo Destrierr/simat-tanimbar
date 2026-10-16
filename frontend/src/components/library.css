@@ -1,0 +1,46 @@
+.button-spinner {
+  display: inline-block;
+  border-radius: 9999px;
+  border-style: solid;
+  border-color: rgba(255, 255, 255, 0.35);
+  border-top-color: currentColor;
+  animation: button-spinner-rotate 0.75s linear infinite;
+}
+.button-spinner--primary {
+  border-color: rgba(255, 255, 255, 0.35);
+  border-top-color: currentColor;
+}
+.button-spinner--secondary,
+.button-spinner--tertiary {
+  border-color: rgba(22, 166, 233, 0.2);
+  border-top-color: currentColor;
+}
+.button-spinner--lg {
+  width: 22px;
+  height: 22px;
+  border-width: 3px;
+}
+.button-spinner--md {
+  width: 18px;
+  height: 18px;
+  border-width: 2.5px;
+}
+.button-spinner--sm {
+  width: 15px;
+  height: 15px;
+  border-width: 2px;
+}
+@keyframes button-spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.b4 {
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+.s2 {
+  font-size: 0.78rem;
+  line-height: 1.35;
+  font-weight: 600;
+}
