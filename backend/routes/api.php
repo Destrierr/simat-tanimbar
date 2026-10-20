@@ -8,12 +8,14 @@ use App\Http\Controllers\Api\LandAssetController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\ActivityLogController;
 
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
 
 Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
+    Route::post('/refresh', [AuthController::class, 'refresh']);
 
     Route::get('/kecamatan', [KecamatanController::class, 'index']);
 
@@ -41,5 +43,8 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::middleware('role:admin')->group(function () {
         Route::apiResource('users', UserController::class);
         Route::apiResource('kecamatan', KecamatanController::class)->except('index');
+        Route::apiResource('users', UserController::class);
+        Route::post('users/{user}/reset-password', [UserController::class, 'resetPassword']);
+        Route::get('/activity-logs', [ActivityLogController::class, 'index']);
     });
 });

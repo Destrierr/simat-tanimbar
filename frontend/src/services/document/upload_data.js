@@ -1,7 +1,8 @@
-import { apiRequest } from "../api";
+import { http } from "../http";
 
 export async function uploadDocumentsService(data, onProgress) {
   const form = new FormData();
+
   for (const key of [
     "document_type",
     "document_number",
@@ -11,11 +12,21 @@ export async function uploadDocumentsService(data, onProgress) {
     if (data[key]) form.append(key, data[key]);
   }
   if (data.file) form.append("file", data.file);
-  onProgress?.(10);
-  const response = await apiRequest(`/assets/${data.asset_id}/documents`, {
-    method: "POST",
-    body: form,
-  });
+
+  onProgress?.(0);
+
+  const { data: body } = await http.post(
+    `/assets/${data.asset_id}/documents`,
+    form,
+    {
+      onUploadProgress: (event) => {
+        // Tahan di 99 sampai server selesai memproses
+        const percent = Math.round((event.loaded * 100) / (event.total || 1));
+        onProgress?.(Math.min(percent, 99));
+      },
+    },
+  );
+
   onProgress?.(100);
-  return { data: response.data, message: response.message };
+  return { data: body.data, message: body.message };
 }

@@ -12,6 +12,7 @@ use App\Services\LandAssetService;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Services\ActivityLogger;
 
 class LandAssetController extends Controller
 {
@@ -32,7 +33,7 @@ class LandAssetController extends Controller
         $completenessExpression = app(AssetCompletenessService::class)
             ->postgresStatusExpression('assets');
         $completenessQuery = LandAsset::query();
-        $this->applyFilters($completenessQuery, $request);
+        $this->applyFilters($completenessQuery, $request, withCompleteness: false);
         $completenessCounts = $completenessQuery
             ->selectRaw("({$completenessExpression}) as status, COUNT(*) as count")
             ->groupByRaw("({$completenessExpression})")
@@ -66,6 +67,8 @@ class LandAssetController extends Controller
         $this->authorize('create', LandAsset::class);
         $asset = $service->create($request->validated());
 
+        ActivityLogger::log('create', "Menambah aset {$asset->nama_jenis_barang} ({$asset->kode_barang})", $request, 'asset', $asset->id);
+
         return ApiResponse::success((new LandAssetResource($asset))->resolve($request), 'Aset berhasil ditambahkan', 201);
     }
 
@@ -82,18 +85,25 @@ class LandAssetController extends Controller
         $this->authorize('update', $asset);
         $asset = $service->update($asset, $request->validated());
 
+        ActivityLogger::log('update', "Mengubah aset {$asset->nama_jenis_barang} ({$asset->kode_barang})", $request, 'asset', $asset->id, [
+            'changed_fields' => array_keys($request->validated()),
+        ]);
+
         return ApiResponse::success((new LandAssetResource($asset))->resolve($request), 'Aset berhasil diperbarui');
     }
 
     public function destroy(Request $request, LandAsset $asset, LandAssetService $service)
     {
         $this->authorize('delete', $asset);
+
+        ActivityLogger::log('delete', "Menghapus aset {$asset->nama_jenis_barang} ({$asset->kode_barang})", $request, 'asset', $asset->id);
+        
         $service->delete($asset);
 
         return response()->noContent();
     }
 
-    private function applyFilters($query, Request $request): void
+    private function applyFilters($query, Request $request, bool $withCompleteness = true): void
     {
         if ($search = trim((string) $request->query('search'))) {
             $query->where(fn ($q) => $q
@@ -128,6 +138,10 @@ class LandAssetController extends Controller
         }
 
         if ($request->filled('completeness')) {
+            $expression = app(AssetCompletenessService::class)->postgresStatusExpression('assets');
+            $query->whereRaw("({$expression}) = ?", [$request->query('completeness')]);
+        }
+        if ($withCompleteness && $request->filled('completeness')) {
             $expression = app(AssetCompletenessService::class)->postgresStatusExpression('assets');
             $query->whereRaw("({$expression}) = ?", [$request->query('completeness')]);
         }

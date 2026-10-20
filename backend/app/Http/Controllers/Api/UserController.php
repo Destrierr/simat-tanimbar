@@ -11,6 +11,8 @@ use App\Support\ApiResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
+use App\Services\ActivityLogger;
 
 class UserController extends Controller
 {
@@ -64,6 +66,8 @@ class UserController extends Controller
         $data['password'] = Hash::make($data['password']);
         $user = User::create($data);
 
+        ActivityLogger::log('create', "Menambah pengguna {$user->name}", $request, 'user', $user->id);
+
         return ApiResponse::success((new UserResource($user))->resolve($request), 'Pengguna berhasil dibuat', 201);
     }
 
@@ -83,6 +87,17 @@ class UserController extends Controller
         }
         $user->update($data);
 
+        $keys = array_keys($request->validated());
+        if ($keys === ['is_active']) {
+            $state = $request->boolean('is_active') ? 'mengaktifkan' : 'menonaktifkan';
+            ActivityLogger::log('status', "Berhasil {$state} akun {$user->name}", $request, 'user', $user->id);
+        } else {
+            ActivityLogger::log('update', "Mengubah pengguna {$user->name}", $request, 'user', $user->id, [
+                'changed_fields' => $keys,
+            ]);
+        }
+
+
         return ApiResponse::success((new UserResource($user->fresh()))->resolve($request), 'Pengguna berhasil diperbarui');
     }
 
@@ -95,8 +110,38 @@ class UserController extends Controller
         if ($user->role === 'admin' && $user->is_active && User::whereIn('role_id', DB::table('role')->select('id')->where('nama', 'admin'))->where('status_aktif', true)->count() <= 1) {
             return ApiResponse::error('Sistem harus memiliki sedikitnya satu admin aktif.', 422);
         }
+
+        ActivityLogger::log('delete', "Menghapus pengguna {$user->name}", $request, 'user', $user->id);
+
         $user->delete();
 
         return response()->noContent();
+    }
+
+    public function resetPassword(Request $request, User $user)
+    {
+        $this->authorize('update', $user);
+
+        $data = $request->validate([
+            // kosongkan untuk membuat password sementara otomatis
+            'password' => ['nullable', 'string', 'min:8', 'confirmed'],
+        ]);
+
+        $generated = empty($data['password']);
+        $newPassword = $generated ? Str::password(12, symbols: false) : $data['password'];
+
+        $user->update(['password' => Hash::make($newPassword)]);
+
+        // logout semua perangkat user tersebut, kecuali sesi admin yang sedang dipakai
+        $currentId = $request->user()->is($user) ? $request->user()->currentAccessToken()?->id : null;
+        $user->tokens()->when($currentId, fn ($q) => $q->where('id', '!=', $currentId))->delete();
+
+        // LOG
+        ActivityLogger::log('reset_password', "Mereset password {$user->name}", $request, 'user', $user->id);
+
+        return ApiResponse::success(
+            $generated ? ['temporary_password' => $newPassword] : [],
+            "Password {$user->name} berhasil direset",
+        );
     }
 }

@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "@tanstack/react-query": "^5.104.4",
+    "axios": "^1.20.0"
+  }
+}

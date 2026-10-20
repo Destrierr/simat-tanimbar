@@ -103,7 +103,7 @@ const ACTION_CONFIG_MAP = {
   },
 };
 
-function ActionButton({ action, row }) {
+export function ActionButton({ action, row }) {
   const actionKey = action.key ?? "custom";
   const config = ACTION_CONFIG_MAP[actionKey] ?? ACTION_CONFIG_MAP.detail;
   const Icon = action.icon ?? config.icon;
@@ -393,7 +393,7 @@ function Table({
 
                 {showActions ? (
                   <th
-                    className="sticky right-0 z-20 border-l border-[var(--color-blue-300)] bg-[var(--color-blue-500)] px-4 py-3 text-left"
+                    className="sticky right-0 z-20 border-l border-[var(--color-blue-300)] bg-[var(--color-blue-600)] px-4 py-3 text-center"
                     style={{
                       width: `${actionColumnWidth}px`,
                       minWidth: `${actionColumnWidth}px`,

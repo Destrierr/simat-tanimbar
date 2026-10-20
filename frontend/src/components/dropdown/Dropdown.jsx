@@ -362,7 +362,7 @@ function Dropdown({
             exit={{ opacity: 0, y: -6, scale: 0.98 }}
             transition={{ duration: 0.16, ease: "easeOut" }}
             className={cn(
-              "absolute z-20 mt-1 w-full overflow-hidden rounded-lg border",
+              "absolute z-50 mt-1 w-full overflow-hidden rounded-lg border",
               isPanelVariant
                 ? "border-[var(--border)] bg-[var(--bg)] p-1 shadow-lg"
                 : "border-[var(--border)] bg-[var(--bg)] p-1 shadow-lg",

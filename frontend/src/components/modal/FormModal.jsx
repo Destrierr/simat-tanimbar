@@ -100,7 +100,7 @@ function TextAreaField({ field, value, onChange, error }) {
 
 function FileField({ field, value, onChange, error }) {
   return (
-    <div className="min-w-0">
+    <div className="relative min-w-0">
       <label htmlFor={field.id} className="field-label">
         {field.label}
 
@@ -144,6 +144,10 @@ function FileField({ field, value, onChange, error }) {
         accept={field.accept}
         multiple={field.multiple}
         disabled={field.disabled}
+        onClick={(event) => {
+          // supaya file yang sama bisa dipilih ulang
+          event.target.value = "";
+        }}
         onChange={(event) =>
           onChange(
             field.multiple
@@ -335,13 +339,18 @@ export default function FormModal({
   size = "xl",
   closeOnBackdrop = true,
   closeOnEscape = true,
+  showFileUpload = true,
 }) {
   const formId = useId();
 
   const [form, setForm] = useState(() => getInitialForm(fields, initialData));
-
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
+
+  const visibleFields = useMemo(
+    () => fields.filter((field) => showFileUpload || field.type !== "file"),
+    [fields, showFileUpload],
+  );
 
   useEffect(() => {
     setForm(getInitialForm(fields, initialData));
@@ -397,10 +406,7 @@ export default function FormModal({
     setErrors((current) => {
       if (!current[name]) return current;
 
-      const next = {
-        ...current,
-      };
-
+      const next = { ...current };
       delete next[name];
 
       return next;
@@ -410,7 +416,7 @@ export default function FormModal({
   const validate = () => {
     const nextErrors = {};
 
-    fields.forEach((field) => {
+    visibleFields.forEach((field) => {
       if (!field.required) return;
 
       const value = form[field.name];
@@ -436,7 +442,7 @@ export default function FormModal({
     if (busy || !validate()) return;
 
     const cleanedForm = Object.fromEntries(
-      fields.map((field) => [
+      visibleFields.map((field) => [
         field.name,
         normalizeSubmitValue(field, form[field.name]),
       ]),
@@ -455,8 +461,9 @@ export default function FormModal({
 
   return createPortal(
     <AnimatePresence>
+      {/* OVERLAY: tidak boleh scroll, supaya dialog tidak terdorong */}
       <div
-        className="fixed inset-0 z-[9999] overflow-y-auto"
+        className="fixed inset-0 z-[9999] overflow-hidden"
         aria-hidden={!isOpen}
       >
         <motion.button
@@ -469,47 +476,31 @@ export default function FormModal({
           onClick={closeOnBackdrop && !busy ? onClose : undefined}
         />
 
-        <div className="relative flex min-h-full items-center justify-center p-3 sm:p-5">
+        {/* WRAPPER: pointer-events-none agar klik backdrop tetap tembus */}
+        <div className="pointer-events-none relative flex h-full w-full items-center justify-center p-3 sm:p-5">
           <motion.div
             role="dialog"
             aria-modal="true"
             aria-labelledby={`${formId}-title`}
             aria-describedby={`${formId}-description`}
-            initial={{
-              opacity: 0,
-              y: 18,
-              scale: 0.98,
-            }}
-            animate={{
-              opacity: 1,
-              y: 0,
-              scale: 1,
-            }}
-            exit={{
-              opacity: 0,
-              y: 12,
-              scale: 0.985,
-            }}
-            transition={{
-              type: "spring",
-              stiffness: 380,
-              damping: 30,
-            }}
+            initial={{ opacity: 0, y: 18, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 12, scale: 0.985 }}
+            transition={{ type: "spring", stiffness: 380, damping: 30 }}
             className={cn(
-              "relative z-10 w-full overflow-hidden rounded-[24px] border border-[var(--border)] bg-[var(--surface)] shadow-[0_24px_70px_rgba(15,23,42,.22)]",
+              "pointer-events-auto relative z-10 flex w-full flex-col overflow-hidden rounded-[24px] border border-[var(--border)] bg-[var(--surface)] shadow-[0_24px_70px_rgba(15,23,42,.22)]",
+              "max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-2.5rem)]",
               widthClass,
             )}
           >
-            <div className="flex max-h-[calc(100dvh-2rem)] flex-col sm:max-h-[calc(100dvh-3rem)]">
+            <div className="flex min-h-0 flex-1 flex-col">
               {/* HEADER */}
-              <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-5 py-4 sm:px-6 sm:py-5">
+              <div className="flex shrink-0 items-start justify-between gap-4 border-b border-[var(--border)] px-5 py-4 sm:px-6 sm:py-5">
                 <div className="flex min-w-0 items-start gap-3 pr-3">
-                  {/* ICON */}
                   <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--accent-bg)] text-[var(--text-active)]">
                     <DocumentIcon className="h-5 w-5" />
                   </div>
 
-                  {/* TITLE + DESCRIPTION */}
                   <div className="min-w-0">
                     <h2
                       id={`${formId}-title`}
@@ -527,7 +518,6 @@ export default function FormModal({
                   </div>
                 </div>
 
-                {/* CLOSE */}
                 <button
                   type="button"
                   onClick={onClose}
@@ -539,11 +529,11 @@ export default function FormModal({
                 </button>
               </div>
 
-              {/* FORM BODY */}
-              <div className="overflow-y-auto px-5 py-5 sm:px-6 sm:py-6">
+              {/* FORM BODY: satu-satunya area yang scroll */}
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6 sm:py-6">
                 <form id={formId} onSubmit={handleSubmit} noValidate>
                   <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-                    {fields.map((field) => (
+                    {visibleFields.map((field) => (
                       <div
                         key={field.name}
                         className={
@@ -562,7 +552,6 @@ export default function FormModal({
                     ))}
                   </div>
 
-                  {/* UPLOAD / SUBMIT STATUS */}
                   {busy ? (
                     <Card className="mt-5 border-[var(--accent-border)] bg-[var(--accent-bg)] p-4 shadow-none">
                       <div className="flex items-center justify-between gap-4 text-[12px] font-bold text-[var(--text-active)]">
@@ -597,8 +586,8 @@ export default function FormModal({
                 </form>
               </div>
 
-              {/* FOOTER */}
-              <div className="flex flex-col-reverse gap-2 border-t border-[var(--border)] bg-[var(--surface-muted)] px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
+              {/* FOOTER: selalu menempel di bawah dialog */}
+              <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-[var(--border)] bg-[var(--surface-muted)] px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
                 <Button
                   type="button"
                   variant="secondary"

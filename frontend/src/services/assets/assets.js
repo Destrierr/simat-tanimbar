@@ -1,4 +1,4 @@
-import { apiRequest, getAllPages } from "../api";
+import { http, getAllPages } from "../http";
 
 function fromApiAsset(asset) {
   return {
@@ -90,69 +90,86 @@ function toApiAsset(payload) {
       payload.link_google_maps ?? payload.google_maps_url ?? null,
   };
 }
-
-export async function getAllAssetsService(params = {}) {
-  const clean = Object.fromEntries(
+  
+  function cleanParams(params = {}) {
+  return Object.fromEntries(
     Object.entries(params).filter(
       ([, value]) => value !== "" && value !== null && value !== undefined,
     ),
   );
-  const rows = await getAllPages("/assets", clean);
+}
+
+async function fetchAllPages(url, params = {}, perPage = 100) {
+  const rows = [];
+  let page = 1;
+  let lastPage = 1;
+
+  do {
+    const { data: body } = await http.get(url, {
+      params: { ...params, per_page: perPage, page },
+    });
+
+    rows.push(...(body.data || []));
+    lastPage = body.meta?.last_page || 1;
+    page += 1;
+  } while (page <= lastPage);
+
+  return rows;
+}
+
+export async function getAllAssetsService(params = {}) {
+  const rows = await getAllPages("/assets", cleanParams(params));
   return { data: rows.map(fromApiAsset) };
 }
 
 export async function getAssetsPageService(params = {}) {
-  const query = new URLSearchParams({
-    page: String(params.page || 1),
-    per_page: String(params.per_page || 10),
+  const { data: body } = await http.get("/assets", {
+    params: { page: 1, per_page: 10, ...cleanParams(params) },
   });
 
-  Object.entries(params).forEach(([key, value]) => {
-    if (
-      !["page", "per_page"].includes(key) &&
-      value !== "" &&
-      value !== null &&
-      value !== undefined
-    ) {
-      query.set(key, String(value));
-    }
-  });
-
-  const response = await apiRequest(`/assets?${query}`);
   return {
-    data: (response.data || []).map(fromApiAsset),
-    meta: response.meta || {},
+    data: (body.data || []).map(fromApiAsset),
+    meta: body.meta || {},
   };
 }
 
 export async function getAssetDetailService(id) {
-  const response = await apiRequest(`/assets/${id}`);
-  return { data: fromApiAsset(response.data) };
+  const { data: body } = await http.get(`/assets/${id}`);
+  return { data: fromApiAsset(body.data) };
 }
 
 export async function createAssetService(payload) {
-  const response = await apiRequest("/assets", {
-    method: "POST",
-    body: toApiAsset(payload),
-  });
-  return { data: fromApiAsset(response.data), message: response.message };
+  const { data: body } = await http.post("/assets", toApiAsset(payload));
+  return { data: fromApiAsset(body.data), message: body.message };
 }
 
 export async function editAssetService(id, payload) {
-  const response = await apiRequest(`/assets/${id}`, {
-    method: "PUT",
-    body: toApiAsset(payload),
-  });
-  return { data: fromApiAsset(response.data), message: response.message };
+  const { data: body } = await http.put(`/assets/${id}`, toApiAsset(payload));
+  return { data: fromApiAsset(body.data), message: body.message };
 }
 
 export async function deleteAssetService(id) {
-  return apiRequest(`/assets/${id}`, { method: "DELETE" });
+  await http.delete(`/assets/${id}`); 
+}
+
+export async function uploadAssetDocumentService(assetId, file, onProgress, documentType) {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("document_type", documentType || "Dokumen Pendukung");
+
+  const { data: body } = await http.post(`/assets/${assetId}/documents`, formData, {
+    onUploadProgress: (event) => {
+      onProgress?.(Math.round((event.loaded * 100) / (event.total || 1)));
+    },
+  });
+
+  return body;
 }
 
 export async function getDashboardSummaryService() {
-  const response = await apiRequest("/dashboard/summary");
-  const data = response.data || {};
+  const { data: body } = await http.get("/dashboard/summary");
+  const data = body.data || {};
+
   return {
     data: {
       totalAssets: data.total_assets || 0,

@@ -1,6 +1,6 @@
-import { apiRequest } from "./api";
+import { http } from "./http";
 
-export async function getReportAssetsService(filters = {}) {
+function mapFilters(filters = {}) {
   const mapped = {
     search: filters.search,
     kecamatan: filters.location || filters.kecamatan,
@@ -8,41 +8,40 @@ export async function getReportAssetsService(filters = {}) {
     tahun_pengadaan: filters.tahun_pengadaan,
     progres_bpn: filters.progres_bpn,
     completeness: filters.completeness,
-    per_page: filters.per_page || 100,
-    page: filters.page || 1,
   };
-  const query = new URLSearchParams(
-    Object.fromEntries(
-      Object.entries(mapped).filter(
-        ([, value]) => value !== "" && value !== undefined && value !== null,
-      ),
+
+  // Sama seperti service aset: buang nilai kosong supaya tidak ikut terkirim
+  return Object.fromEntries(
+    Object.entries(mapped).filter(
+      ([, value]) => value !== "" && value !== null && value !== undefined,
     ),
   );
-  return apiRequest(`/reports/assets?${query}`);
+}
+
+export async function getReportAssetsService(filters = {}) {
+  const { data: body } = await http.get("/reports/assets", {
+    params: {
+      ...mapFilters(filters),
+      per_page: filters.per_page || 100,
+      page: filters.page || 1,
+    },
+  });
+
+  return {
+    data: body.data || [],
+    meta: body.meta || {},
+  };
 }
 
 export async function getReportSummaryService() {
-  return apiRequest("/reports/summary");
+  const { data: body } = await http.get("/reports/summary");
+  return body; // { data: {...} }
 }
 
 export async function downloadReport(format, filters = {}) {
-  const mapped = {
-    search: filters.search,
-    kecamatan: filters.location || filters.kecamatan,
-    status_tanah: filters.status_tanah || filters.status,
-    tahun_pengadaan: filters.tahun_pengadaan,
-    progres_bpn: filters.progres_bpn,
-    completeness: filters.completeness,
-  };
-  const query = new URLSearchParams(
-    Object.fromEntries(
-      Object.entries(mapped).filter(
-        ([, value]) => value !== "" && value !== undefined && value !== null,
-      ),
-    ),
-  );
-  const suffix = query.size ? `?${query}` : "";
-  return apiRequest(`/reports/export/${format}${suffix}`, {
+  const { data: blob } = await http.get(`/reports/export/${format}`, {
+    params: mapFilters(filters),
     responseType: "blob",
   });
+  return blob;
 }

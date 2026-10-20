@@ -9,6 +9,7 @@ import UsersPage from "../ui/pages/UsersPage";
 import KecamatanPage from "../ui/pages/KecamatanPage";
 import ProtectedRoute from "./ProtectedRoute";
 import WorkspaceLayout from "../ui/layouts/WorkspaceLayout";
+import ActivityLogsPage from "../ui/pages/ActivitylogsPage";
 
 function AppRoutes() {
   return (
@@ -46,6 +47,14 @@ function AppRoutes() {
           }
         />
       </Route>
+      <Route
+        path="/activity-logs"
+        element={
+          <ProtectedRoute role="admin">
+            <ActivityLogsPage />
+          </ProtectedRoute>
+        }
+      />
 
       {/* FALLBACK */}
       <Route path="*" element={<LoginPage />} />

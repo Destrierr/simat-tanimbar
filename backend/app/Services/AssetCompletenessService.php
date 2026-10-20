@@ -6,10 +6,6 @@ use App\Models\LandAsset;
 
 class AssetCompletenessService
 {
-    /**
-     * Initial implementation rule. The planning documents state that the final
-     * required-field rule is to be agreed during requirements analysis.
-     */
     public const REQUIRED_FIELDS = [
         'nama_jenis_barang', 'kode_barang', 'nomor_register', 'luas', 'tahun_pengadaan',
         'lokasi', 'alamat', 'kecamatan_id', 'status_tanah_id', 'nama_pemilik',
@@ -17,34 +13,79 @@ class AssetCompletenessService
         'pematokan', 'progres_bpn_id',
     ];
 
+    public const LABELS = [
+        'nama_jenis_barang' => 'Nama/Jenis Barang',
+        'kode_barang' => 'Kode Barang',
+        'nomor_register' => 'Nomor Register',
+        'luas' => 'Luas',
+        'tahun_pengadaan' => 'Tahun Pengadaan',
+        'lokasi' => 'Lokasi',
+        'alamat' => 'Letak/Alamat',
+        'kecamatan_id' => 'Kecamatan',
+        'status_tanah_id' => 'Status Tanah',
+        'nama_pemilik' => 'Nama Pemilik',
+        'tanggal_dokumen' => 'Tanggal Dokumen',
+        'nomor_dokumen_kepemilikan' => 'No. Dokumen Kepemilikan',
+        'asal_usul' => 'Asal Usul',
+        'harga' => 'Harga',
+        'pematokan' => 'Pematokan',
+        'progres_bpn_id' => 'Progres BPN',
+    ];
+
+    // Minimal field terisi agar "Sebagian Lengkap". Di bawahnya = "Belum Lengkap".
+    // 1 = perilaku sekarang. Naikkan (mis. 8) agar "Belum Lengkap" bermakna.
+    public const PARTIAL_MIN_FILLED = 1;
+
+    private function postgresFilledExpression(string $table): string
+    {
+        return implode(' + ', array_map(
+            fn (string $f) => "CASE WHEN NULLIF(TRIM(CAST({$table}.{$f} AS TEXT)), '') IS NOT NULL THEN 1 ELSE 0 END",
+            self::REQUIRED_FIELDS,
+        ));
+    }
+
     public function postgresStatusExpression(string $table = 'assets'): string
     {
-        $parts = array_map(fn (string $field) => "CASE WHEN NULLIF(TRIM(CAST({$table}.{$field} AS TEXT)), '') IS NOT NULL THEN 1 ELSE 0 END", self::REQUIRED_FIELDS);
-        $filled = implode(' + ', $parts);
+        $filled = $this->postgresFilledExpression($table);
         $total = count(self::REQUIRED_FIELDS);
+        $min = self::PARTIAL_MIN_FILLED;
 
-        return "CASE WHEN ({$filled}) = {$total} THEN 'Lengkap' WHEN ({$filled}) > 0 THEN 'Sebagian Lengkap' ELSE 'Belum Lengkap' END";
+        return "CASE WHEN ({$filled}) = {$total} THEN 'Lengkap' WHEN ({$filled}) >= {$min} THEN 'Sebagian Lengkap' ELSE 'Belum Lengkap' END";
+    }
+
+    // Jumlah aset yang kosong per field, dalam satu query
+    public function postgresMissingCountsSelect(string $table = 'assets'): string
+    {
+        return implode(', ', array_map(
+            fn (string $f) => "COALESCE(SUM(CASE WHEN NULLIF(TRIM(CAST({$table}.{$f} AS TEXT)), '') IS NULL THEN 1 ELSE 0 END), 0) AS {$f}",
+            self::REQUIRED_FIELDS,
+        ));
     }
 
     public function calculate(LandAsset $asset): array
     {
-        $filled = collect(self::REQUIRED_FIELDS)->filter(function (string $field) use ($asset) {
-            $value = $asset->{$field};
-
-            return $value !== null && trim((string) $value) !== '';
-        })->count();
+        // blank() memperlakukan false dan 0 sebagai terisi, sama seperti SQL
+        $missing = collect(self::REQUIRED_FIELDS)
+            ->filter(fn (string $f) => blank($asset->{$f}))
+            ->values()
+            ->all();
 
         $total = count(self::REQUIRED_FIELDS);
+        $filled = $total - count($missing);
         $percentage = $total > 0 ? round(($filled / $total) * 100, 2) : 100;
 
         $status = match (true) {
-            $percentage >= 100 => 'Lengkap',
-            $percentage > 0 => 'Sebagian Lengkap',
+            $filled === $total => 'Lengkap',
+            $filled >= self::PARTIAL_MIN_FILLED => 'Sebagian Lengkap',
             default => 'Belum Lengkap',
         };
 
-        $missing = collect(self::REQUIRED_FIELDS)->filter(fn (string $field) => blank($asset->{$field}))->values()->all();
-
-        return ['percentage' => $percentage, 'status' => $status, 'filled_required_fields' => $filled, 'total_required_fields' => $total, 'missing_fields' => $missing];
+        return [
+            'percentage' => $percentage,
+            'status' => $status,
+            'filled_required_fields' => $filled,
+            'total_required_fields' => $total,
+            'missing_fields' => $missing,
+        ];
     }
 }

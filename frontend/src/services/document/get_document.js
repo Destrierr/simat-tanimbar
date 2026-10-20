@@ -1,8 +1,8 @@
-import { apiRequest } from "../api";
+import { http } from "../http";
 
 export async function getDocumentsByAssetService(assetId) {
-  const response = await apiRequest(`/assets/${assetId}/documents`);
-  return { data: response.data || [] };
+  const { data: body } = await http.get(`/assets/${assetId}/documents`);
+  return { data: body.data || [] };
 }
 
 // The current backend intentionally has no global /documents endpoint.
@@ -12,19 +12,20 @@ export async function getAllDocumentsService() {
 }
 
 export async function viewDocumentService(documentId) {
-  // The backend exposes an authorized download endpoint; the browser can render
-  // the returned PDF/image blob as a preview.
-  return apiRequest(`/documents/${documentId}/download`, {
+  // Endpoint download yang terotorisasi; blob PDF/gambar bisa dirender sebagai preview.
+  const { data: blob } = await http.get(`/documents/${documentId}/download`, {
     responseType: "blob",
   });
+  return blob;
 }
 
 export async function downloadDocumentService(documentId) {
-  return apiRequest(`/documents/${documentId}/download`, {
+  const { data: blob } = await http.get(`/documents/${documentId}/download`, {
     responseType: "blob",
   });
+  return blob;
 }
 
 export async function deleteDocumentService(id) {
-  return apiRequest(`/documents/${id}`, { method: "DELETE" });
+  await http.delete(`/documents/${id}`);
 }

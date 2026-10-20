@@ -13,6 +13,7 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Maatwebsite\Excel\Facades\Excel;
+use App\Services\ActivityLogger;
 
 class ReportController extends Controller
 {
@@ -27,25 +28,63 @@ class ReportController extends Controller
 
     public function summary(AssetCompletenessService $completeness)
     {
-        $assets = LandAsset::all();
-        $statuses = $assets->map(fn ($asset) => $completeness->calculate($asset)['status']);
+        $total = LandAsset::count();
+        $fieldCount = count(AssetCompletenessService::REQUIRED_FIELDS);
+
+        $counts = LandAsset::query()
+            ->selectRaw("({$completeness->postgresStatusExpression('assets')}) as status, COUNT(*) as count")
+            ->groupByRaw("({$completeness->postgresStatusExpression('assets')})")
+            ->pluck('count', 'status');
+
+        $missingRow = (array) LandAsset::query()
+            ->selectRaw($completeness->postgresMissingCountsSelect('assets'))
+            ->toBase()
+            ->first();
+
+        $missingFields = collect($missingRow)
+            ->map(fn ($count, $field) => [
+                'field' => $field,
+                'label' => AssetCompletenessService::LABELS[$field] ?? $field,
+                'count' => (int) $count,
+            ])
+            ->filter(fn ($row) => $row['count'] > 0)
+            ->sortByDesc('count')
+            ->values();
+
+        $average = $total > 0
+            ? round(100 - ($missingFields->sum('count') / ($total * $fieldCount)) * 100, 1)
+            : 0;
+
+        $completenessCounts = [
+            'Lengkap' => (int) ($counts['Lengkap'] ?? 0),
+            'Sebagian Lengkap' => (int) ($counts['Sebagian Lengkap'] ?? 0),
+            'Belum Lengkap' => (int) ($counts['Belum Lengkap'] ?? 0),
+        ];
 
         return ApiResponse::success([
-            'total_assets' => $assets->count(),
+            'total_assets' => $total,
             'total_documents' => Document::count(),
-            'total_area' => (float) $assets->sum('luas'),
-            'complete' => $statuses->filter(fn ($s) => $s === 'Lengkap')->count(),
-            'partially_complete' => $statuses->filter(fn ($s) => $s === 'Sebagian Lengkap')->count(),
-            'incomplete' => $statuses->filter(fn ($s) => $s === 'Belum Lengkap')->count(),
+            'total_area' => (float) LandAsset::sum('luas'),
+            'complete' => $completenessCounts['Lengkap'],
+            'partially_complete' => $completenessCounts['Sebagian Lengkap'],
+            'incomplete' => $completenessCounts['Belum Lengkap'],
+            'completeness_counts' => $completenessCounts,
+            'average_completeness' => $average,
+            'missing_fields' => $missingFields,
             'by_status_tanah' => DB::table('assets')->join('status_tanah', 'assets.status_tanah_id', '=', 'status_tanah.id')->select('status_tanah.nama as status_tanah', DB::raw('COUNT(*) as count'))->groupBy('status_tanah.nama')->get(),
             'by_progres_bpn' => DB::table('assets')->leftJoin('progres_bpn', 'assets.progres_bpn_id', '=', 'progres_bpn.id')->select('progres_bpn.nama as progres_bpn', DB::raw('COUNT(*) as count'))->groupBy('progres_bpn.nama')->get(),
-            'with_problems' => $assets->filter(fn ($a) => filled($a->permasalahan) && mb_strtolower(trim((string) $a->permasalahan)) !== 'tidak ada')->count(),
+            'with_problems' => LandAsset::where('ada_permasalahan', true)->count(),
         ], 'Ringkasan laporan berhasil dimuat');
     }
+
+
+    
 
     public function exportExcel(Request $request)
     {
         $this->authorize('export', LandAsset::class);
+
+        ActivityLogger::log('export', 'Mengekspor laporan aset (Excel)', $request, 'report', null, ['filters' => $request->query()]);
 
         return Excel::download(new LandAssetsExport($request->query()), 'laporan-aset-tanah.xlsx');
     }
@@ -53,6 +92,9 @@ class ReportController extends Controller
     public function exportPdf(Request $request)
     {
         $this->authorize('export', LandAsset::class);
+
+        ActivityLogger::log('export', 'Mengekspor laporan aset (PDF)', $request, 'report', null, ['filters' => $request->query()]);
+
 
         return Pdf::loadView('reports.assets', ['assets' => $this->assetQuery($request)->get()])->setPaper('a4', 'landscape')->download('laporan-aset-tanah.pdf');
     }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Icon } from "@iconify/react";
-import Table from "../../components/table/Table";
+import Table, { ActionButton } from "../../components/table/Table";
+import { UserMinusIcon, UserPlusIcon } from "@heroicons/react/24/outline";
 import Pagination from "../../components/pagination/Pagination";
 import FormModal from "../../components/modal/FormModal";
 import { ModalConfirm } from "../../components/modal/Modal";
@@ -8,23 +9,26 @@ import Alert from "../../components/alert/Alert";
 import Button from "../../components/button/Button";
 import Card from "../../components/card/Card";
 import PageHeader from "../../components/header/PageHeader";
-import {
-  getAllUsersService,
-  createUserService,
-  editUserService,
-  deleteUserService,
-  setUserStatusService,
-} from "../../services/crud_user/create_user";
 import { useAlert } from "../../hooks/useAlert";
 import useAppStore from "../../stores/useAppStore";
 import Dropdown from "../../components/dropdown/Dropdown";
+import {
+  useCreateUser,
+  useDeleteUser,
+  useEditUser,
+  useSetUserStatus,
+  useUsers,
+} from "../../hooks/useUsers";
+import { getErrorMessage, useToastAlert } from "../../hooks/useToastAlert";
 
 const ROLE_OPTIONS = [
   { value: "Admin", label: "Admin" },
   { value: "Operator", label: "Operator" },
   { value: "Viewer", label: "Viewer" },
 ];
+
 const PAGE_SIZE = 10;
+
 const ROLE_STYLES = {
   Admin: {
     badge: "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300",
@@ -44,6 +48,7 @@ const ROLE_STYLES = {
     tone: "violet",
   },
 };
+
 const TONES = {
   sky: "bg-sky-50 text-sky-500 ring-sky-100 dark:bg-sky-500/10 dark:ring-sky-500/20",
   emerald:
@@ -53,32 +58,53 @@ const TONES = {
   violet:
     "bg-violet-50 text-violet-500 ring-violet-100 dark:bg-violet-500/10 dark:ring-violet-500/20",
 };
+
+const EMPTY_META = {
+  current_page: 1,
+  per_page: PAGE_SIZE,
+  total: 0,
+  last_page: 1,
+  role_counts: {},
+};
+
 const userFields = [
   {
     name: "name",
     label: "Nama Lengkap",
     type: "text",
+    fullWidth: true,
     placeholder: "Masukkan nama lengkap",
+  },
+  {
+    name: "username",
+    label: "Username",
+    type: "text",
+    fullWidth: true,
+    placeholder: "Masukkan username",
   },
   {
     name: "email",
     label: "Email",
     type: "text",
+    fullWidth: true,
     placeholder: "Masukkan email",
-  },
-  {
-    name: "password",
-    label: "Password sementara",
-    type: "password",
-    placeholder: "Minimal 8 karakter",
   },
   {
     name: "rolename",
     label: "Role",
     type: "select",
+    fullWidth: true,
     placeholder: "Pilih role",
     options: ROLE_OPTIONS,
   },
+  {
+    name: "password",
+    label: "Masukkan password",
+    type: "password",
+    fullWidth: true,
+    placeholder: "Minimal 8 karakter",
+  },
+  
 ];
 const editUserFields = userFields.filter((field) => field.name !== "password");
 const initials = (name = "") =>
@@ -96,52 +122,49 @@ function UsersPage() {
     role?.toLowerCase()?.trim(),
   );
 
-  const { alert, showAlert } = useAlert();
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { alertState, showAlert, closeAlert } = useToastAlert();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const [meta, setMeta] = useState({
-    current_page: 1,
-    per_page: PAGE_SIZE,
-    total: 0,
-    last_page: 1,
-    role_counts: {},
-  });
-  const [latestUsers, setLatestUsers] = useState([]);
   const [openModal, setOpenModal] = useState(false);
   const [openEditModal, setOpenEditModal] = useState(false);
   const [editData, setEditData] = useState(null);
   const [userToDelete, setUserToDelete] = useState(null);
-  const [deletingUser, setDeletingUser] = useState(false);
 
-  const load = async () => {
-    setLoading(true);
-    try {
-      const result = await getAllUsersService({
-        page,
-        perPage: PAGE_SIZE,
-        search,
-        role: roleFilter,
-        status: statusFilter,
-      });
-      setUsers(result.data || []);
-      setMeta(result.meta);
-      setLatestUsers(result.latestUsers);
-      if (page > result.meta.last_page) {
-        setPage(Math.max(1, result.meta.last_page));
-      }
-    } catch (error) {
-      showAlert("error", error?.message || "Gagal memuat data pengguna");
-    } finally {
-      setLoading(false);
-    }
-  };
+  // ---- Data (TanStack Query) ----
+  const usersQuery = useUsers({
+    page,
+    perPage: PAGE_SIZE,
+    search,
+    role: roleFilter,
+    status: statusFilter,
+  });
+  const createUser = useCreateUser();
+  const editUser = useEditUser();
+  const deleteUser = useDeleteUser();
+  const setUserStatus = useSetUserStatus();
+
+  const users = usersQuery.data?.data ?? [];
+  const meta = usersQuery.data?.meta ?? EMPTY_META;
+  const latestUsers = usersQuery.data?.latestUsers ?? [];
+  const loading = usersQuery.isFetching;
+  const deletingUser = deleteUser.isPending; // v4: isLoading
+
+  // Alert error saat load gagal
   useEffect(() => {
-    load();
-  }, [page, search, roleFilter, statusFilter]);
+  if (usersQuery.error)
+    showAlert(
+      "error",
+      getErrorMessage(usersQuery.error, "Gagal memuat data pengguna"),
+    );
+}, [usersQuery.error, showAlert]);
+
+  // Kalau halaman saat ini melebihi last_page (mis. setelah hapus data terakhir)
+  useEffect(() => {
+    const lastPage = usersQuery.data?.meta?.last_page;
+    if (lastPage && page > lastPage) setPage(Math.max(1, lastPage));
+  }, [usersQuery.data, page]);
 
   const totalPages = Math.max(1, meta.last_page || 1);
   const roleCounts = meta.role_counts || {};
@@ -149,6 +172,7 @@ function UsersPage() {
     (total, count) => total + Number(count),
     0,
   );
+
   const resetFilters = () => {
     setSearch("");
     setRoleFilter("");
@@ -156,37 +180,44 @@ function UsersPage() {
     setPage(1);
   };
 
+  // ---- Handlers ----
   const handleDelete = async () => {
-    if (!userToDelete) return;
+  if (!userToDelete) return;
 
-    setDeletingUser(true);
-    try {
-      await deleteUserService(userToDelete.id);
-      setUserToDelete(null);
-      showAlert("success", "Pengguna berhasil dihapus");
-      await load();
-    } catch (error) {
-      showAlert("error", error?.message || "Gagal menghapus pengguna");
-    } finally {
-      setDeletingUser(false);
-    }
-  };
+  const userName = userToDelete.name || "pengguna";
 
-  const toggleUserStatus = async (user) => {
-    try {
-      await setUserStatusService(
-        user.id,
-        user.status === "active" ? "inactive" : "active",
-      );
-      showAlert(
-        "success",
-        `Akun ${user.status === "active" ? "dinonaktifkan" : "diaktifkan"}.`,
-      );
-      await load();
-    } catch (error) {
-      showAlert("error", error?.message || "Gagal mengubah status pengguna");
-    }
-  };
+  try {
+    await deleteUser.mutateAsync(userToDelete.id);
+    setUserToDelete(null);
+    showAlert("success", `Pengguna “${userName}” berhasil dihapus`);
+  } catch (error) {
+    setUserToDelete(null);
+    showAlert("error", getErrorMessage(error, "Gagal menghapus pengguna"));
+  }
+};
+
+const toggleUserStatus = async (user) => {
+  const isActive = user.status === "active";
+
+  try {
+    await setUserStatus.mutateAsync({
+      id: user.id,
+      status: isActive ? "inactive" : "active",
+    });
+    showAlert(
+      "success",
+      `Akun “${user.name}” berhasil ${isActive ? "dinonaktifkan" : "diaktifkan"}`,
+    );
+  } catch (error) {
+    showAlert(
+      "error",
+      getErrorMessage(
+        error,
+        `Gagal ${isActive ? "menonaktifkan" : "mengaktifkan"} akun`,
+      ),
+    );
+  }
+};
 
   const columns = [
     { header: "No", render: (_, index) => (page - 1) * PAGE_SIZE + index + 1 },
@@ -224,7 +255,9 @@ function UsersPage() {
       render: (user) => {
         const style = ROLE_STYLES[user.rolename] || ROLE_STYLES.Viewer;
         return (
-          <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[9px] font-bold text-sky-700 dark:border-sky-800 dark:bg-sky-900/20 dark:text-sky-300">
+          <span
+            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[9px] font-bold ${style.badge}`}
+          >
             <Icon icon={style.icon} width={12} />
             {user.rolename}
           </span>
@@ -244,51 +277,59 @@ function UsersPage() {
     },
     {
       header: "Aksi",
-      render: (user) => (
-        <div className="flex items-center gap-1">
-          <button
-            title={
-              user.status === "active"
-                ? "Nonaktifkan pengguna"
-                : "Aktifkan pengguna"
-            }
-            onClick={() => toggleUserStatus(user)}
-            className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-100 text-amber-600 hover:bg-amber-50 dark:border-slate-700 dark:text-amber-300"
-          >
-            <Icon
-              icon={
-                user.status === "active"
-                  ? "lucide:user-round-x"
-                  : "lucide:user-round-check"
-              }
-              width={14}
+      render: (user) => {
+        const isActive = user.status === "active";
+
+        return (
+          <div className="flex items-center gap-2">
+            <ActionButton
+              row={user}
+              action={{
+                key: "status",
+                label: isActive ? "Nonaktifkan pengguna" : "Aktifkan pengguna",
+                icon: isActive ? UserMinusIcon : UserPlusIcon,
+                onClick: () => toggleUserStatus(user),
+              }}
             />
-          </button>
-          <button
-            title="Edit pengguna"
-            onClick={() => {
-              setEditData(user);
-              setOpenEditModal(true);
-            }}
-            className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-100 text-sky-600 hover:bg-sky-100 dark:border-slate-700 dark:text-sky-300 dark:hover:bg-slate-800"
-          >
-            <Icon icon="lucide:square-pen" width={14} />
-          </button>
-          <button
-            title="Hapus pengguna"
-            onClick={() => setUserToDelete(user)}
-            className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-100 text-red-500 hover:bg-rose-50 hover:text-rose-600 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-rose-500/10"
-          >
-            <Icon icon="lucide:trash-2" width={14} />
-          </button>
-        </div>
-      ),
+            <ActionButton
+              row={user}
+              action={{
+                key: "update",
+                label: "Edit pengguna",
+                onClick: () => {
+                  setEditData(user);
+                  setOpenEditModal(true);
+                },
+              }}
+            />
+            <ActionButton
+              row={user}
+              action={{
+                key: "delete",
+                label: "Hapus pengguna",
+                onClick: () => setUserToDelete(user),
+              }}
+            />
+          </div>
+        );
+      },
     },
   ];
 
   return (
     <div className="page-shell">
-      {alert.show ? <Alert type={alert.type} message={alert.message} /> : null}
+      {alertState.show ? (
+        <Alert
+          key={alertState.id}
+          mode="absolute"
+          type={alertState.type}
+          title={alertState.title}
+          description={alertState.description}
+          duration={4000}
+          className="!z-[10000]"
+          onClose={closeAlert}
+        />
+      ) : null}
       <div className="page-container space-y-5">
         <PageHeader
           eyebrow={
@@ -331,7 +372,7 @@ function UsersPage() {
               ========================================== */}
               <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 {/* SEARCH */}
-                <label className="flex h-10 min-w-0 items-center gap-2 rounded-xl border border-[var(--border-strong)] bg-[var(--surface)] px-3 transition focus-within:border-sky-400 focus-within:ring-2 focus-within:ring-sky-100 dark:focus-within:ring-sky-900/30 sm:col-span-2 lg:col-span-2">
+                <label className="flex h-10 min-w-0 items-center gap-2 rounded-xl border border-[var(--border-strong)] bg-[var(--surface)] px-3 transition focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 dark:focus-within:ring-blue-900/30 sm:col-span-2 lg:col-span-2">
                   <Icon
                     icon="lucide:search"
                     width={15}
@@ -345,7 +386,7 @@ function UsersPage() {
                       setPage(1);
                     }}
                     placeholder="Cari nama, username, atau email..."
-                    className="min-w-0 flex-1 bg-transparent text-xs text-[var(--text-high-emphasis)] outline-none placeholder:text-[var(--text-low-emphasis)]"
+                    className="min-w-0 flex-1 border-0 bg-transparent p-0 text-xs text-[var(--text-high-emphasis)] shadow-none outline-none ring-0 placeholder:text-[var(--text-low-emphasis)] focus:border-transparent focus:shadow-none focus:outline-none focus:ring-0"
                   />
                 </label>
 
@@ -534,15 +575,18 @@ function UsersPage() {
         fields={userFields}
         onSubmit={async (data) => {
           try {
-            await createUserService(data);
+            const result = await createUser.mutateAsync(data);
             setOpenModal(false);
-            showAlert("success", "Pengguna berhasil ditambahkan");
-            await load();
+            showAlert(
+              "success",
+              `Pengguna “${result?.data?.name || data.name}” berhasil ditambahkan`,
+            );
           } catch (error) {
-            showAlert("error", error?.message || "Gagal menambahkan pengguna");
+            showAlert("error", getErrorMessage(error, "Gagal menambahkan pengguna"));
           }
         }}
       />
+
       <FormModal
         title="Edit Pengguna"
         isOpen={openEditModal}
@@ -554,16 +598,19 @@ function UsersPage() {
         initialData={editData}
         onSubmit={async (data) => {
           try {
-            await editUserService(editData.id, data);
+            const result = await editUser.mutateAsync({ id: editData.id, data });
             setOpenEditModal(false);
             setEditData(null);
-            showAlert("success", "Pengguna berhasil diperbarui");
-            await load();
+            showAlert(
+              "success",
+              `Data pengguna “${result?.data?.name || editData.name}” berhasil diperbarui`,
+            );
           } catch (error) {
-            showAlert("error", error?.message || "Gagal memperbarui pengguna");
+            showAlert("error", getErrorMessage(error, "Gagal memperbarui pengguna"));
           }
         }}
       />
+
       <ModalConfirm
         open={Boolean(userToDelete)}
         onClose={() => setUserToDelete(null)}

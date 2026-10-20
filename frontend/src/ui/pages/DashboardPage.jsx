@@ -11,8 +11,19 @@ import PageHeader from "../../components/header/PageHeader";
 import Badge from "../../components/badge/Badge";
 import Button from "../../components/button/Button";
 import WelcomeBanner from "../../components/banner/WelcomeBanner";
+import RecentActivityCard from "../../components/activity/RecentActivityCard";
 
 const colors = ["#1688ed", "#0bbd9a", "#ffbd43", "#a78bfa", "#94a3b8"];
+
+function getCompletenessBadgeClass(status) {
+  const value = String(status || "").trim().toLowerCase();
+
+  if (value === "lengkap")
+    return "border-emerald-200 bg-emerald-100 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300";
+  if (value === "belum lengkap")
+    return "border-rose-200 bg-rose-100 text-rose-700 dark:border-rose-800 dark:bg-rose-900/20 dark:text-rose-300";
+  return "border-amber-200 bg-amber-100 text-amber-700 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300";
+}
 
 function StatCard({ title, value, note, icon, tone, onClick }) {
   return (
@@ -128,21 +139,25 @@ export default function DashboardPage() {
         </button>
       ),
     },
-    { header: "Kecamatan", render: (asset) => asset.kecamatan || "-" },
+    { 
+      header: "Kecamatan", 
+      render: (asset) => asset.kecamatan || "-" 
+    },
     {
       header: "Kelengkapan",
-      render: (asset) => (
-        <Badge
-          label={asset.completeness_status || "Belum Lengkap"}
-          tone={
-            {
-              Lengkap: "success",
-              "Sebagian Lengkap": "warning",
-              "Belum Lengkap": "error",
-            }[asset.completeness_status] || "neutral"
-          }
-        />
-      ),
+      render: (asset) => {
+        const status = asset.completeness_status || "Belum Lengkap";
+
+        return (
+          <span
+            className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold ${getCompletenessBadgeClass(
+              status,
+            )}`}
+          >
+            {status}
+          </span>
+        );
+      },
     },
   ];
 
@@ -179,7 +194,7 @@ export default function DashboardPage() {
             onClick={() => navigate("/assets")}
           />
           <StatCard
-            title="Belum Lengkap"
+            title="Sebagian Lengkap"
             value={
               loading
                 ? "—"
@@ -208,7 +223,7 @@ export default function DashboardPage() {
               {[
                 ["Lengkap", summary?.docCompleteCount || 0, "bg-emerald-500"],
                 [
-                  "Belum Lengkap",
+                  "Sebagian Lengkap",
                   summary?.docIncompleteCount || 0,
                   "bg-amber-500",
                 ],
@@ -332,23 +347,75 @@ export default function DashboardPage() {
             </button>
           }
         >
-          <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-5">
-            {recentAssets.map((asset) => (
-              <button
-                key={asset.id}
-                onClick={() => navigate(`/assets/${asset.id}`)}
-                className="rounded-xl border border-[var(--border)] p-3 text-left transition hover:border-[var(--accent-border)] hover:bg-[var(--accent-bg)]"
-              >
-                <span className="block truncate text-xs font-bold text-[var(--text-high-emphasis)]">
-                  {asset.lokasi || asset.nama_jenis_barang}
-                </span>
-                <span className="mt-1 block truncate text-[10px] text-[var(--text-low-emphasis)]">
-                  Reg. {asset.register || "-"} · {asset.kecamatan || "-"}
-                </span>
-              </button>
-            ))}
-          </div>
+          {recentAssets.length ? (
+            <div className="overflow-hidden rounded-xl border border-[var(--border)]">
+              {/* Header kolom (disembunyikan di mobile) */}
+              <div className="hidden grid-cols-[2.5fr_1.5fr_1.2fr_1.2fr_1fr_auto] items-center gap-3 border-b border-[var(--border)] bg-[var(--surface-muted)] px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-low-emphasis)] md:grid">
+                <span>Nama / Lokasi</span>
+                <span>Register</span>
+                <span>Kecamatan</span>
+                <span>Status Tanah</span>
+                <span>Tahun</span>
+                <span className="w-4" />
+              </div>
+
+              <div className="divide-y divide-[var(--border)]">
+                {recentAssets.map((asset) => (
+                  <button
+                    key={asset.id}
+                    onClick={() => navigate(`/assets/${asset.id}`)}
+                    className="group grid w-full grid-cols-1 items-center gap-1 px-4 py-3 text-left transition hover:bg-[var(--accent-bg)] md:grid-cols-[2.5fr_1.5fr_1.2fr_1.2fr_1fr_auto] md:gap-3"
+                  >
+                    {/* Nama / Lokasi */}
+                    <span className="flex min-w-0 items-center gap-3">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-300">
+                        <Icon icon="lucide:land-plot" width={17} />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block truncate text-xs font-bold text-[var(--text-high-emphasis)]">
+                          {asset.lokasi || asset.nama_jenis_barang || "-"}
+                        </span>
+                        <span className="block truncate text-[10px] text-[var(--text-low-emphasis)]">
+                          {asset.nama_jenis_barang || "-"}
+                        </span>
+                      </span>
+                    </span>
+
+                    <span className="truncate text-xs text-[var(--text-medium-emphasis)]">
+                      <span className="mr-1 text-[10px] text-[var(--text-low-emphasis)] md:hidden">Reg.</span>
+                      {asset.register || "-"}
+                    </span>
+
+                    <span className="truncate text-xs text-[var(--text-medium-emphasis)]">
+                      {asset.kecamatan || "-"}
+                    </span>
+
+                    <span className="truncate text-xs text-[var(--text-medium-emphasis)]">
+                      {asset.status_tanah || "-"}
+                    </span>
+
+                    <span className="text-xs tabular-nums text-[var(--text-medium-emphasis)]">
+                      {asset.tahun_pengadaan || "-"}
+                    </span>
+
+                    <Icon
+                      icon="lucide:chevron-right"
+                      width={16}
+                      className="hidden shrink-0 text-slate-300 transition group-hover:text-sky-500 md:block"
+                    />
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <p className="py-6 text-center text-xs text-[var(--text-low-emphasis)]">
+              Belum ada aset.
+            </p>
+          )}
         </Panel>
+        
+        <RecentActivityCard />
+
       </div>
     </div>
   );

@@ -1,11 +1,11 @@
-import { apiRequest } from "../api";
+import { http } from "../http";
 
 export async function getMeService() {
-  const response = await apiRequest("/me");
+  const { data: body } = await http.get("/me");
   return {
     data: {
-      ...response.data,
-      photoprofile: response.data?.profile_photo_url || null,
+      ...body.data,
+      photoprofile: body.data?.profile_photo_url || null,
     },
   };
 }
@@ -16,15 +16,18 @@ export async function viewPhotoProfileService(path) {
 }
 
 export async function editProfileService(data) {
-  const body = new FormData();
-  for (const key of ["name", "username", "email"])
-    if (data[key] !== undefined) body.append(key, data[key]);
-  if (data.avatarFile) body.append("avatar_file", data.avatarFile);
-  body.append("_method", "PUT");
-  const response = await apiRequest("/me", { method: "POST", body });
-  return { data: response.data, message: response.message };
+  const form = new FormData();
+
+  for (const key of ["name", "username", "email"]) {
+    if (data[key] !== undefined) form.append(key, data[key]);
+  }
+  if (data.avatarFile) form.append("avatar_file", data.avatarFile);
+  form.append("_method", "PUT");
+
+  const { data: body } = await http.post("/me", form);
+  return { data: body.data, message: body.message };
 }
 
 export async function deletePhotoProfileService() {
-  return apiRequest("/profile/photo", { method: "DELETE" });
+  await http.delete("/profile/photo");
 }
