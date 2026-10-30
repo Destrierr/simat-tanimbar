@@ -83,7 +83,7 @@ export default function AssetDetailPage() {
   const fileInputRef = useRef(null);
 
   const canEdit = ["admin", "operator"].includes(role);
-  const canDeleteDocument = ["admin", "operator"].includes(role);
+  const canDeleteDocument = ["admin"].includes(role);
 
   const [asset, setAsset] = useState(null);
   const [documents, setDocuments] = useState([]);
